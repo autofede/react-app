@@ -239,6 +239,7 @@ export default function Statistics() {
       if (response.data.success) {
         // 刷新所有数据
         fetchData();  // 重新获取所有图表数据
+        setPage(0);  // 重置到第一页
         fetchRespondentDetails();  // 刷新表格数据
         // 清除选中状态
         setSelectedRow(null);

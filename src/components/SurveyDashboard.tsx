@@ -330,14 +330,17 @@ const SurveyDashboard = () => {
       if (response.data.success) {
         // 清空答案
         setAnswers({});
-        dispatch(clearAnswers());
+        
+        // 清空所有 Redux store 数据
+        dispatch(clearAnswers());  // 清空答案数据
+        dispatch(setQuestions([]));  // 清空问题数据
+        dispatch(clearUser());  // 清空用户数据
         
         // 显示成功消息
         setShowSuccessMessage(true);
         
         // 3秒后自动退出
         setTimeout(() => {
-          dispatch(clearUser());
           window.location.href = '/login';
         }, 3000);
       } else {
