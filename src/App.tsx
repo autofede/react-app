@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
+import { Provider } from 'react-redux';
 import CssBaseline from '@mui/material/CssBaseline';
 import theme from './theme';
 import Login from './components/Login';
@@ -8,6 +9,7 @@ import SurveyDashboard from './components/SurveyDashboard';
 import Statistics from './components/Statistics';
 import Responses from './components/Responses';
 import { useState } from 'react';
+import { store } from './store';
 
 interface UserInfo {
   id: string;
@@ -54,40 +56,42 @@ function App() {
   };
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Router>
-        <Routes>
-          <Route path="/login" element={
-            userInfo.isAuthenticated ? 
-              <Navigate to={getDefaultRoute(userInfo.type)} replace /> : 
-              <Login setUserInfo={setUserInfo} />
-          } />
-          <Route path="/" element={<Layout userInfo={userInfo} setUserInfo={setUserInfo} hasAnswers={hasAnswers} />}>
-            <Route index element={
+    <Provider store={store}>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Router>
+          <Routes>
+            <Route path="/login" element={
               userInfo.isAuthenticated ? 
                 <Navigate to={getDefaultRoute(userInfo.type)} replace /> : 
-                <Navigate to="/login" replace />
+                <Login setUserInfo={setUserInfo} />
             } />
-            <Route path="dashboard" element={
-              canAccessRoute('dashboard') ? 
-                <SurveyDashboard /> : 
-                <Navigate to="/login" replace />
-            } />
-            <Route path="statistics" element={
-              canAccessRoute('statistics') ? 
-                <Statistics /> : 
-                <Navigate to="/login" replace />
-            } />
-            <Route path="responses" element={
-              canAccessRoute('responses') ? 
-                <Responses userInfo={userInfo} setHasAnswers={setHasAnswers} /> : 
-                <Navigate to="/login" replace />
-            } />
-          </Route>
-        </Routes>
-      </Router>
-    </ThemeProvider>
+            <Route path="/" element={<Layout userInfo={userInfo} setUserInfo={setUserInfo} hasAnswers={hasAnswers} />}>
+              <Route index element={
+                userInfo.isAuthenticated ? 
+                  <Navigate to={getDefaultRoute(userInfo.type)} replace /> : 
+                  <Navigate to="/login" replace />
+              } />
+              <Route path="dashboard" element={
+                canAccessRoute('dashboard') ? 
+                  <SurveyDashboard /> : 
+                  <Navigate to="/login" replace />
+              } />
+              <Route path="statistics" element={
+                canAccessRoute('statistics') ? 
+                  <Statistics /> : 
+                  <Navigate to="/login" replace />
+              } />
+              <Route path="responses" element={
+                canAccessRoute('responses') ? 
+                  <Responses userInfo={userInfo} setHasAnswers={setHasAnswers} /> : 
+                  <Navigate to="/login" replace />
+              } />
+            </Route>
+          </Routes>
+        </Router>
+      </ThemeProvider>
+    </Provider>
   );
 }
 

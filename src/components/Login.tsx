@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
 import {
   Box,
   Button,
@@ -10,8 +11,10 @@ import {
   Alert,
   Tabs,
   Tab,
+  CircularProgress,
 } from '@mui/material';
 import axios from 'axios';
+import { setUser } from '../store/userSlice';
 
 interface UserInfo {
   id: string;
@@ -49,6 +52,7 @@ function TabPanel(props: TabPanelProps) {
 
 function Login({ setUserInfo }: LoginProps) {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const [tabValue, setTabValue] = useState(0);
   const [formData, setFormData] = useState({
     username: '',
@@ -99,6 +103,11 @@ function Login({ setUserInfo }: LoginProps) {
       const response = await axios.post('http://127.0.0.1:5000/api/login', formData);
       
       if (response.data.success) {
+        dispatch(setUser({
+          userId: response.data.user_id,
+          username: formData.username,
+          type: 'existing',
+        }));
         setUserInfo({
           id: formData.username,
           type: 'existing',

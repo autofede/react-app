@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
 import {
   Box,
   Typography,
@@ -14,10 +15,20 @@ import {
   Checkbox,
   FormGroup,
   FormControlLabel,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
 } from '@mui/material';
 import Star from '@mui/icons-material/Star';
 import StarBorder from '@mui/icons-material/StarBorder';
 import axios from 'axios';
+import { RootState } from '../store';
+import { setQuestions } from '../store/surveySlice';
+import { setAddQuestions, clearAnswers } from '../store/answerSlice';
+import { useNavigate } from 'react-router-dom';
+import { clearUser } from '../store/userSlice';
 
 interface Option {
   option_id: number;
@@ -58,13 +69,82 @@ interface SurveyListItem {
   description: string;
 }
 
+interface Answer {
+  response_id: string;
+  question_id: number;
+  option_id: number[];
+  text_answer: string;
+  numerical_answer: number;
+}
+
 const API_BASE_URL = 'http://127.0.0.1:5000';
 
-export default function SurveyDashboard() {
+const SurveyDashboard = () => {
+  const dispatch = useDispatch();
+  const user = useSelector((state: RootState) => state.user);
+  const reduxAnswers = useSelector((state: RootState) => state.answer.answers);
+  const navigate = useNavigate();
   const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>('');
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [loading, setLoading] = useState(true);
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [answers, setAnswers] = useState<Record<number, string | string[]>>({});
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+
+  // 更新 Redux 中的答案
+  const updateReduxAnswers = (newAnswers: Record<number, string | string[]>) => {
+    if (!survey) return;
+    
+    const formattedAnswers = survey.questions.map(question => {
+      const answer = newAnswers[question.question_id];
+      const formattedAnswer = {
+        response_id: user.username,
+        question_id: question.question_id,
+        option_id: [] as number[],
+        text_answer: '',
+        numerical_answer: 0
+      };
+
+      switch (question.type_id) {
+        case 1: // 单选下拉框
+          if (typeof answer === 'string') {
+            const selectedOption = question.options.find(opt => opt.option_text === answer);
+            if (selectedOption) {
+              formattedAnswer.option_id = [selectedOption.option_id];
+            }
+          }
+          break;
+        case 2: // 多选下拉框
+          if (Array.isArray(answer)) {
+            formattedAnswer.option_id = question.options
+              .filter(opt => answer.includes(opt.option_text))
+              .map(opt => opt.option_id);
+          }
+          break;
+        case 3: // 文本框
+        case 4: // 文本域
+          if (typeof answer === 'string') {
+            formattedAnswer.text_answer = answer;
+          }
+          break;
+        case 5: // 评分
+          if (typeof answer === 'string') {
+            formattedAnswer.numerical_answer = parseInt(answer, 10) || 0;
+          }
+          break;
+      }
+      
+      return formattedAnswer;
+    });
+    
+    dispatch(setAddQuestions(formattedAnswers));
+  };
+
+  // 当 answers 变化时更新 Redux
+  useEffect(() => {
+    updateReduxAnswers(answers);
+  }, [answers]);
 
   // 获取所有问卷列表
   useEffect(() => {
@@ -94,12 +174,14 @@ export default function SurveyDashboard() {
 
       setLoading(true);
       try {
-        const response = await axios.get<{ success: boolean; data: SurveyResponse }>(`${API_BASE_URL}/api/surveys/${selectedSurveyId}`);
+        const response = await axios.get<{ success: boolean; data: SurveyResponse }>(`${API_BASE_URL}/api/surveys/${selectedSurveyId}/questions`);
         if (response.data.success) {
-          setSurvey({
+          const surveyData = {
             ...response.data.data.survey,
             questions: response.data.data.questions.sort((a, b) => a.sequence_number - b.sequence_number)
-          });
+          };
+          setSurvey(surveyData);
+          dispatch(setQuestions(surveyData.questions));
         }
       } catch (error) {
         console.error('Error fetching survey details:', error);
@@ -110,7 +192,7 @@ export default function SurveyDashboard() {
     };
 
     fetchSurveyDetails();
-  }, [selectedSurveyId]);
+  }, [selectedSurveyId, dispatch]);
 
   const handleSurveyChange = (event: SelectChangeEvent) => {
     setSelectedSurveyId(event.target.value);
@@ -127,11 +209,16 @@ export default function SurveyDashboard() {
             <Select
               label={question.description || "Select an option"}
               displayEmpty
+              value={answers[question.question_id] || ''}
+              onChange={(e) => {
+                const newAnswers = { ...answers, [question.question_id]: e.target.value };
+                setAnswers(newAnswers);
+              }}
             >
-              {options
+              {[...options]
                 .sort((a, b) => a.sequence_number - b.sequence_number)
                 .map((option) => (
-                  <MenuItem key={option.option_id} value={option.option_id}>
+                  <MenuItem key={option.option_id} value={option.option_text}>
                     {option.option_text}
                   </MenuItem>
                 ))}
@@ -142,12 +229,23 @@ export default function SurveyDashboard() {
       case 2: // 多选下拉列表改为多选框
         return (
           <FormGroup>
-            {options
+            {[...options]
               .sort((a, b) => a.sequence_number - b.sequence_number)
               .map((option) => (
                 <FormControlLabel
                   key={option.option_id}
-                  control={<Checkbox />}
+                  control={
+                    <Checkbox
+                      checked={(answers[question.question_id] as string[] || []).includes(option.option_text)}
+                      onChange={(e) => {
+                        const currentAnswers = (answers[question.question_id] as string[] || []);
+                        const newAnswers = e.target.checked
+                          ? [...currentAnswers, option.option_text]
+                          : currentAnswers.filter((text: string) => text !== option.option_text);
+                        setAnswers({ ...answers, [question.question_id]: newAnswers });
+                      }}
+                    />
+                  }
                   label={option.option_text}
                 />
               ))}
@@ -160,6 +258,10 @@ export default function SurveyDashboard() {
             fullWidth
             placeholder="Enter your answer here..."
             variant="outlined"
+            value={answers[question.question_id] || ''}
+            onChange={(e) => {
+              setAnswers({ ...answers, [question.question_id]: e.target.value });
+            }}
           />
         );
 
@@ -171,6 +273,10 @@ export default function SurveyDashboard() {
             rows={4}
             placeholder="Enter your answer here..."
             variant="outlined"
+            value={answers[question.question_id] || ''}
+            onChange={(e) => {
+              setAnswers({ ...answers, [question.question_id]: e.target.value });
+            }}
           />
         );
 
@@ -181,6 +287,10 @@ export default function SurveyDashboard() {
             max={5}
             emptyIcon={<StarBorder fontSize="inherit" />}
             icon={<Star fontSize="inherit" />}
+            value={Number(answers[question.question_id]) || 0}
+            onChange={(_, newValue) => {
+              setAnswers({ ...answers, [question.question_id]: newValue?.toString() || '' });
+            }}
           />
         );
 
@@ -190,8 +300,53 @@ export default function SurveyDashboard() {
             fullWidth
             placeholder="Enter your answer here..."
             variant="outlined"
+            value={answers[question.question_id] || ''}
+            onChange={(e) => {
+              setAnswers({ ...answers, [question.question_id]: e.target.value });
+            }}
           />
         );
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!survey) {
+      return;
+    }
+
+    if (!user.username) {
+      console.error('No username found');
+      return;
+    }
+
+    try {
+      setSubmitLoading(true);
+      const response = await axios.post(`${API_BASE_URL}/api/answers`, {
+        survey_id: survey.survey_id,
+        username: user.username,
+        answers: reduxAnswers
+      });
+
+      if (response.data.success) {
+        // 清空答案
+        setAnswers({});
+        dispatch(clearAnswers());
+        
+        // 显示成功消息
+        setShowSuccessMessage(true);
+        
+        // 3秒后自动退出
+        setTimeout(() => {
+          dispatch(clearUser());
+          window.location.href = '/login';
+        }, 3000);
+      } else {
+        console.error('Failed to submit answers:', response.data.message);
+      }
+    } catch (error) {
+      console.error('Error submitting answers:', error);
+    } finally {
+      setSubmitLoading(false);
     }
   };
 
@@ -268,8 +423,44 @@ export default function SurveyDashboard() {
               </Box>
             ))}
           </Box>
+
+          <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleSubmit}
+              disabled={submitLoading}
+            >
+              {submitLoading ? 'Submitting...' : 'ADD'}
+            </Button>
+          </Box>
         </Paper>
       )}
+
+      {/* Success Message Dialog */}
+      <Dialog
+        open={showSuccessMessage}
+        aria-labelledby="success-dialog-title"
+        aria-describedby="success-dialog-description"
+        PaperProps={{
+          sx: {
+            minWidth: '300px',
+            textAlign: 'center',
+            p: 2
+          }
+        }}
+      >
+        <DialogTitle id="success-dialog-title">
+          Success
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="success-dialog-description">
+            Survey submitted successfully! You will be logged out in 3 seconds.
+          </DialogContentText>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
-} 
+};
+
+export default SurveyDashboard; 
