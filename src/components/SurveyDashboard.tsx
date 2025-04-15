@@ -29,6 +29,7 @@ import { setQuestions } from '../store/surveySlice';
 import { setAddQuestions, clearAnswers } from '../store/answerSlice';
 import { useNavigate } from 'react-router-dom';
 import { clearUser } from '../store/userSlice';
+import { setLogics } from '../store/surveyLogicSlice';
 
 interface Option {
   option_id: number;
@@ -91,6 +92,7 @@ const SurveyDashboard = () => {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [answers, setAnswers] = useState<Record<number, string | string[]>>({});
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [hiddenQuestions, setHiddenQuestions] = useState<number[]>([]);
 
   // 更新 Redux 中的答案
   const updateReduxAnswers = (newAnswers: Record<number, string | string[]>) => {
@@ -194,8 +196,69 @@ const SurveyDashboard = () => {
     fetchSurveyDetails();
   }, [selectedSurveyId, dispatch]);
 
+  // 获取调查逻辑数据
+  const fetchSurveyLogic = async (surveyId: string) => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/survey-logic/${surveyId}`);
+      if (response.data.success) {
+        dispatch(setLogics(response.data.data));
+      }
+    } catch (error) {
+      console.error('Error fetching survey logic:', error);
+    }
+  };
+
+  // 在选择调查时获取逻辑数据
+  useEffect(() => {
+    if (selectedSurveyId) {
+      fetchSurveyLogic(selectedSurveyId);
+    }
+  }, [selectedSurveyId]);
+
+  // 监听 Redux 中的答案变化
+  useEffect(() => {
+    if (reduxAnswers.length > 0 && survey) {
+      const answerForQuestion5 = reduxAnswers.find(answer => answer.question_id === 5);
+      const answerForQuestion55 = reduxAnswers.find(answer => answer.question_id === 55);
+      
+      if (answerForQuestion5) {
+        if ( answerForQuestion5.option_id[0] === 24) {
+          // survey1 的第5个问题选择 option_id 24 时，隐藏 6-29
+          const questionsToHide = survey.questions
+            .filter(q => q.sequence_number >= 6 && q.sequence_number <= 29)
+            .map(q => q.question_id);
+          setHiddenQuestions(questionsToHide);
+        // } else if (answerForQuestion5.option_id[0] === 61) {
+        //   // survey2 的第5个问题选择 option_id 61 时，隐藏 6-14
+        //   const questionsToHide = survey.questions
+        //     .filter(q => q.sequence_number >= 6 && q.sequence_number <= 14)
+        //     .map(q => q.question_id);
+        //   setHiddenQuestions(questionsToHide);
+        } else {
+          // 如果不匹配任何条件，显示所有问题
+          setHiddenQuestions([]);
+        }
+      } else if (answerForQuestion55 && answerForQuestion55.option_id[0] === 61) {
+        // survey2 的第55个问题选择时，隐藏 56-64
+        const questionsToHide = survey.questions
+          .filter(q => q.sequence_number >= 6 && q.sequence_number <= 14)
+          .map(q => q.question_id);
+        setHiddenQuestions(questionsToHide);
+      } else {
+        // 如果没有匹配的答案，显示所有问题
+        setHiddenQuestions([]);
+      }
+    }
+  }, [reduxAnswers, survey]);
+
   const handleSurveyChange = (event: SelectChangeEvent) => {
     setSelectedSurveyId(event.target.value);
+    // 清空 Redux 中的答案数据
+    dispatch(clearAnswers());
+    // 清空本地答案状态
+    setAnswers({});
+    // 清空隐藏问题状态
+    setHiddenQuestions([]);
   };
 
   const renderQuestionInput = (question: Question) => {
@@ -410,20 +473,22 @@ const SurveyDashboard = () => {
           
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {survey.questions.map((question) => (
-              <Box key={question.question_id}>
-                <Typography variant="subtitle1" gutterBottom>
-                  Q{question.sequence_number}: {question.question_text}
-                  {question.is_required === 1 && (
-                    <Typography component="span" color="error.main" sx={{ ml: 1 }}>*</Typography>
-                  )}
-                </Typography>
-                {question.description && (
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    {question.description}
+              !hiddenQuestions.includes(question.question_id) && (
+                <Box key={question.question_id}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Q{question.sequence_number}: {question.question_text}
+                    {question.is_required === 1 && (
+                      <Typography component="span" color="error.main" sx={{ ml: 1 }}>*</Typography>
+                    )}
                   </Typography>
-                )}
-                {renderQuestionInput(question)}
-              </Box>
+                  {question.description && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      {question.description}
+                    </Typography>
+                  )}
+                  {renderQuestionInput(question)}
+                </Box>
+              )
             ))}
           </Box>
 
